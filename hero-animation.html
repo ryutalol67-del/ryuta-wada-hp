@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hero Animation</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: #ffffff;
+    overflow: hidden;
+  }
+
+  #stage {
+    position: fixed;
+    inset: 0;
+    background: #ffffff;
+  }
+
+  /* ── 斜め帯（マスク） ───────────────────────── */
+  #bar {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 28px;
+    height: 0;                        /* アニメーションで伸びる */
+    transform: translate(-50%, -50%) rotate(52deg);
+    transform-origin: center center;
+    overflow: hidden;
+  }
+
+  /* ── 帯の内側：画像を正立させる逆回転コンテナ ── */
+  #inner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 200vw;
+    height: 200vh;
+    transform: translate(-50%, -50%) rotate(-52deg);
+    transform-origin: center center;
+  }
+
+  /* ── スライド（銀箔画像） ─────────────────── */
+  .slide {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 1.8s ease;
+    background-size: cover;
+    background-position: center;
+  }
+  .slide.active { opacity: 1; }
+
+  /*
+   * ▼ 銀箔画像を追加するには：
+   *   background-image: url('あなたの画像URL') を各 .slide に設定する
+   *
+   * 例:
+   *   <div class="slide active" style="background-image:url('https://example.com/ginpaku1.jpg')"></div>
+   */
+
+  /* デモ用グラデーション（画像差し替え時は削除） */
+  .slide:nth-child(1) { background: linear-gradient(108deg,#a8a8a8 0%,#d4d4d4 18%,#f2f2f2 38%,#e6e6e6 52%,#c0c0c0 68%,#8a8a8a 82%,#b8b8b8 100%); }
+  .slide:nth-child(2) { background: linear-gradient(92deg,#b0b0b0 0%,#ececec 28%,#ffffff 46%,#e0e0e0 64%,#9a9a9a 82%,#c8c8c8 100%); }
+  .slide:nth-child(3) { background: linear-gradient(120deg,#787878 0%,#c0c0c0 22%,#e8e8e8 42%,#d8d8d8 58%,#a0a0a0 76%,#b0b0b0 100%); }
+  .slide:nth-child(4) { background: linear-gradient(102deg,#cccccc 0%,#f8f8f8 30%,#ffffff 50%,#e4e4e4 70%,#b4b4b4 88%,#d8d8d8 100%); }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="bar">
+    <div id="inner">
+      <!-- ▼ ここの各 div が銀箔スライド。画像URL は style に書く ── -->
+      <div class="slide active"></div>
+      <div class="slide"></div>
+      <div class="slide"></div>
+      <div class="slide"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  var bar    = document.getElementById('bar');
+  var slides = document.querySelectorAll('.slide');
+  var cur    = 0;
+
+  /* ── スライドショー（2.8秒ごとに切り替え） ── */
+  function nextSlide() {
+    slides[cur].classList.remove('active');
+    cur = (cur + 1) % slides.length;
+    slides[cur].classList.add('active');
+  }
+  setInterval(nextSlide, 2800);
+
+  /* ── 帯を中心から両端へ伸ばすアニメーション ── */
+  function playIntro() {
+    bar.style.transition = 'none';
+    bar.style.height     = '0';
+    void bar.offsetWidth; /* reflow */
+
+    setTimeout(function () {
+      bar.style.transition = 'height 1.15s cubic-bezier(0.76, 0, 0.24, 1)';
+      bar.style.height     = '280px'; /* 画面縦の約2/4に相当 */
+    }, 80);
+  }
+
+  /* ページ読み込み後に再生 */
+  window.addEventListener('load', function () {
+    setTimeout(playIntro, 300);
+  });
+</script>
+
+</body>
+</html>
