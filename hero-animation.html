@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=1280">
 <title>Hero Animation</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -18,100 +18,165 @@
     position: fixed;
     inset: 0;
     background: #ffffff;
+    overflow: hidden;
   }
 
-  /* ── 斜め帯（マスク） ───────────────────────── */
   #bar {
     position: absolute;
     left: 50%;
     top: 50%;
-    width: 28px;
-    height: 0;                        /* アニメーションで伸びる */
-    transform: translate(-50%, -50%) rotate(52deg);
+    width: 78px;
+    height: 0;
+    transform: translate(-50%, -50%) rotate(47deg);
     transform-origin: center center;
     overflow: hidden;
   }
 
-  /* ── 帯の内側：画像を正立させる逆回転コンテナ ── */
   #inner {
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 200vw;
-    height: 200vh;
-    transform: translate(-50%, -50%) rotate(-52deg);
+    /* width/height は JS で動的に算出（sizeInner参照）。
+       ここでの初期値は最初の描画がちらつかないための暫定値のみ。 */
+    width: 100vw;
+    height: 100vh;
+    transform: translate(-50%, -50%) rotate(-47deg);
     transform-origin: center center;
   }
 
-  /* ── スライド（銀箔画像） ─────────────────── */
   .slide {
     position: absolute;
     inset: 0;
     opacity: 0;
-    transition: opacity 1.8s ease;
+    transition: opacity 8s ease-in-out;
     background-size: cover;
     background-position: center;
   }
   .slide.active { opacity: 1; }
-
-  /*
-   * ▼ 銀箔画像を追加するには：
-   *   background-image: url('あなたの画像URL') を各 .slide に設定する
-   *
-   * 例:
-   *   <div class="slide active" style="background-image:url('https://example.com/ginpaku1.jpg')"></div>
-   */
-
-  /* デモ用グラデーション（画像差し替え時は削除） */
-  .slide:nth-child(1) { background: linear-gradient(108deg,#a8a8a8 0%,#d4d4d4 18%,#f2f2f2 38%,#e6e6e6 52%,#c0c0c0 68%,#8a8a8a 82%,#b8b8b8 100%); }
-  .slide:nth-child(2) { background: linear-gradient(92deg,#b0b0b0 0%,#ececec 28%,#ffffff 46%,#e0e0e0 64%,#9a9a9a 82%,#c8c8c8 100%); }
-  .slide:nth-child(3) { background: linear-gradient(120deg,#787878 0%,#c0c0c0 22%,#e8e8e8 42%,#d8d8d8 58%,#a0a0a0 76%,#b0b0b0 100%); }
-  .slide:nth-child(4) { background: linear-gradient(102deg,#cccccc 0%,#f8f8f8 30%,#ffffff 50%,#e4e4e4 70%,#b4b4b4 88%,#d8d8d8 100%); }
 </style>
 </head>
 <body>
 
 <div id="stage">
   <div id="bar">
-    <div id="inner">
-      <!-- ▼ ここの各 div が銀箔スライド。画像URL は style に書く ── -->
-      <div class="slide active"></div>
-      <div class="slide"></div>
-      <div class="slide"></div>
-      <div class="slide"></div>
-    </div>
+    <div id="inner"></div>
   </div>
 </div>
 
 <script>
-  var bar    = document.getElementById('bar');
-  var slides = document.querySelectorAll('.slide');
-  var cur    = 0;
+  var REPO  = 'ryutalol67-del/ryuta-wada-hp';
+  var FOLDER = 'images';
+  var API   = 'https://api.github.com/repos/' + REPO + '/contents/' + FOLDER;
+  var RAW   = 'https://raw.githubusercontent.com/' + REPO + '/main/' + FOLDER + '/';
 
-  /* ── スライドショー（2.8秒ごとに切り替え） ── */
-  function nextSlide() {
+  var bar   = document.getElementById('bar');
+  var inner = document.getElementById('inner');
+  var slides = [];
+  var cur   = 0;
+  var timer = null;
+
+  /* ── 帯の実寸から #inner の必要最小サイズを計算 ──
+     #bar は幅 BAND_WIDTH・高さ window.innerHeight の矩形を ANGLE 度回転させたもの。
+     #inner はその内部でさらに -ANGLE 度回転して画面に対して垂直に立て直している。
+     このとき #inner が #bar のクリップ矩形（BAND_WIDTH × H）を完全に覆うために
+     必要な最小サイズは、クリップ矩形の四隅を -ANGLE 度回転して得られる
+     バウンディングボックスに一致する。200vw/200vh のような固定値ではなく
+     これを都度計算することで、無駄な引き伸ばし（＝ボケの原因）をなくす。 */
+  var BAND_WIDTH = 78;   // #bar の width と一致させること
+  var ANGLE_DEG  = 47;   // #bar の rotate() と一致させること
+  var MARGIN     = 24;   // アンチエイリアス・端の見切れ対策の余白(px)
+
+  function sizeInner(){
+    var H = window.innerHeight;
+    var rad = ANGLE_DEG * Math.PI / 180;
+    var w = BAND_WIDTH * Math.cos(rad) + H * Math.sin(rad) + MARGIN;
+    var h = BAND_WIDTH * Math.sin(rad) + H * Math.cos(rad) + MARGIN;
+    inner.style.width  = w + 'px';
+    inner.style.height = h + 'px';
+  }
+
+  var resizeTimer = null;
+  window.addEventListener('resize', function(){
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(sizeInner, 150);
+  });
+
+  sizeInner(); // 初期化時点で正しいサイズにしておく
+
+  /* ── GitHub APIから画像リストを取得 ── */
+  fetch(API)
+    .then(function(r){ return r.json(); })
+    .then(function(files){
+      /* 画像ファイルだけ抽出 */
+      var imgs = files.filter(function(f){
+        return /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(f.name);
+      });
+
+      if(imgs.length === 0){
+        /* 画像がなければグラデーションで代替 */
+        addFallback();
+      } else {
+        imgs.forEach(function(f, i){
+          var div = document.createElement('div');
+          div.className = 'slide' + (i === 0 ? ' active' : '');
+          div.style.backgroundImage = 'url(' + RAW + encodeURIComponent(f.name) + ')';
+          inner.appendChild(div);
+        });
+        slides = inner.querySelectorAll('.slide');
+        startSlideshow();
+      }
+
+      playIntro();
+    })
+    .catch(function(){
+      /* API失敗時もグラデーション表示 */
+      addFallback();
+      playIntro();
+    });
+
+  function addFallback(){
+    var grads = [
+      'linear-gradient(108deg,#a8a8a8,#d4d4d4,#f2f2f2,#c0c0c0,#8a8a8a)',
+      'linear-gradient(92deg,#b0b0b0,#ececec,#fff,#9a9a9a)',
+      'linear-gradient(120deg,#787878,#c0c0c0,#e8e8e8,#a0a0a0)',
+    ];
+    grads.forEach(function(g, i){
+      var div = document.createElement('div');
+      div.className = 'slide' + (i === 0 ? ' active' : '');
+      div.style.background = g;
+      inner.appendChild(div);
+    });
+    slides = inner.querySelectorAll('.slide');
+    startSlideshow();
+  }
+
+  function nextSlide(){
     slides[cur].classList.remove('active');
     cur = (cur + 1) % slides.length;
     slides[cur].classList.add('active');
   }
-  setInterval(nextSlide, 2800);
 
-  /* ── 帯を中心から両端へ伸ばすアニメーション ── */
-  function playIntro() {
-    bar.style.transition = 'none';
-    bar.style.height     = '0';
-    void bar.offsetWidth; /* reflow */
-
-    setTimeout(function () {
-      bar.style.transition = 'height 1.15s cubic-bezier(0.76, 0, 0.24, 1)';
-      bar.style.height     = '280px'; /* 画面縦の約2/4に相当 */
-    }, 80);
+  function startSlideshow(){
+    if(timer) clearInterval(timer);
+    /* 最初は7秒静止してから切り替え開始 */
+    setTimeout(function(){
+      nextSlide();
+      /* 以降は 8秒フェード + 5秒静止 = 13秒ごとに繰り返し */
+      timer = setInterval(nextSlide, 13000);
+    }, 7000);
   }
 
-  /* ページ読み込み後に再生 */
-  window.addEventListener('load', function () {
-    setTimeout(playIntro, 300);
-  });
+  /* ── 帯を中心から両端へ伸ばすアニメーション ── */
+  function playIntro(){
+    bar.style.transition = 'none';
+    bar.style.height     = '0';
+    void bar.offsetWidth;
+    setTimeout(function(){
+      bar.style.transition = 'height 1.3s cubic-bezier(0.76, 0, 0.24, 1)';
+      bar.style.height     = window.innerHeight + 'px';
+      sizeInner(); // 高さ確定後に念のため再計算
+    }, 80);
+  }
 </script>
 
 </body>
